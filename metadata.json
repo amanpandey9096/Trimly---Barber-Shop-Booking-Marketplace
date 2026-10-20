@@ -1,0 +1,6 @@
+{
+  "name": "Trimly - Barber Shop Booking Marketplace",
+  "description": "Discover premier local barber shops, compare grooming services, and book guaranteed appointment slots online without waiting in queues.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

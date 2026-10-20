@@ -1,0 +1,6 @@
+{
+  "summary": "Comprehensive implementation plan for the Trimly customer authentication portal, customer dashboard (/customer/dashboard), appointment history (/customer/bookings), profile settings (/customer/profile), login/signup/forgot-password pages, appointment actions (cancellation dialog & rescheduling engine), booking preservation flow, INR currency synchronization, and Google Maps location discovery.",
+  "updatedAt": "2026-10-20T08:33:32.539620799Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
