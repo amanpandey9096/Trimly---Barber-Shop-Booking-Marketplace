@@ -33,9 +33,32 @@ import {
   fetchAppointmentsFromSupabase,
 } from './lib/supabase';
 
+const VALID_VIEWS = new Set([
+  'home',
+  'explore',
+  'shop-detail',
+  'login',
+  'signup',
+  'forgot-password',
+  'customer/dashboard',
+  'customer/bookings',
+  'customer/profile',
+  'list-shop',
+]);
+
+function getInitialViewFromLocation(): string {
+  if (typeof window === 'undefined') return 'home';
+  const raw = window.location.pathname.replace(/^\/+|\/+$/g, '');
+  if (!raw || raw === 'index.html') return 'home';
+  if (raw === 'dashboard') return 'customer/dashboard';
+  if (raw === 'bookings') return 'customer/bookings';
+  if (raw === 'profile') return 'customer/profile';
+  return VALID_VIEWS.has(raw) ? raw : 'home';
+}
+
 export default function App() {
-  // Navigation view state
-  const [currentView, setCurrentView] = useState<string>('home');
+  // Navigation view state synchronized with browser pathname for Netlify SPA routing
+  const [currentView, setCurrentView] = useState<string>(getInitialViewFromLocation);
   const [selectedShopId, setSelectedShopId] = useState<string | null>(null);
 
   // Search parameters passed between Home and Explore
@@ -174,6 +197,15 @@ export default function App() {
     }
   }, [user]);
 
+  // Listen for browser back/forward button events
+  useEffect(() => {
+    const onPopState = () => {
+      setCurrentView(getInitialViewFromLocation());
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   // Route protection: redirect unauthenticated visitors attempting to view customer portal
   const handleNavigate = (view: string, shopId?: string) => {
     if (view === 'shop-detail' && shopId) {
@@ -191,18 +223,33 @@ export default function App() {
       const target = view === 'dashboard' ? 'customer/dashboard' : view;
       setRedirectAfterLogin(target);
       setCurrentView('login');
+      try {
+        window.history.pushState({}, '', '/login');
+      } catch {
+        // Ignore history push errors in restricted iframes
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
+    let nextView = view;
     if (view === 'dashboard') {
-      setCurrentView('customer/dashboard');
+      nextView = 'customer/dashboard';
     } else if (view === 'bookings') {
-      setCurrentView('customer/bookings');
+      nextView = 'customer/bookings';
     } else if (view === 'profile') {
-      setCurrentView('customer/profile');
-    } else {
-      setCurrentView(view);
+      nextView = 'customer/profile';
+    }
+
+    setCurrentView(nextView);
+
+    try {
+      const nextPath = nextView === 'home' ? '/' : `/${nextView}`;
+      if (window.location.pathname !== nextPath) {
+        window.history.pushState({}, '', nextPath);
+      }
+    } catch {
+      // Ignore history push errors in restricted iframes
     }
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
