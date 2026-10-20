@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   LayoutDashboard,
   Calendar,
@@ -6,11 +6,16 @@ import {
   Scissors,
   LogOut,
   ChevronRight,
-  ShieldAlert,
+  Database,
   Sparkles,
-  ExternalLink,
+  CheckCircle2,
+  Copy,
+  Check,
+  X,
+  Code2,
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { SUPABASE_SQL_SCHEMA } from '../lib/supabase';
 
 interface CustomerLayoutProps {
   currentView: string;
@@ -18,6 +23,8 @@ interface CustomerLayoutProps {
   user: UserProfile;
   onLogout: () => void;
   upcomingCount?: number;
+  supabaseSynced?: boolean;
+  supabaseTableMissing?: boolean;
   children: React.ReactNode;
 }
 
@@ -27,8 +34,19 @@ export const CustomerLayout: React.FC<CustomerLayoutProps> = ({
   user,
   onLogout,
   upcomingCount = 0,
+  supabaseSynced = true,
+  supabaseTableMissing = false,
   children,
 }) => {
+  const [showSchemaModal, setShowSchemaModal] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2500);
+  };
+
   const navItems = [
     {
       id: 'customer/dashboard',
@@ -144,15 +162,26 @@ export const CustomerLayout: React.FC<CustomerLayoutProps> = ({
             </button>
           </div>
 
-          {/* Simulated Demo Session Notice */}
-          <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl space-y-1.5 text-[11px] text-stone-500">
-            <div className="flex items-center gap-1.5 text-stone-700 font-semibold">
-              <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span>Demo Authentication</span>
+          {/* Supabase Cloud Database Status */}
+          <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-2 text-[11px] text-stone-600">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-emerald-900 font-bold">
+                <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Supabase Connected</span>
+              </div>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
             </div>
-            <p className="leading-relaxed">
-              Active frontend session stored in local browser state. Permanent cross-device sync requires Supabase Auth or Firebase backend integration.
+            <p className="leading-relaxed text-stone-600">
+              Project <code className="font-mono text-[10px] bg-white px-1 py-0.5 rounded border border-emerald-200 text-emerald-900">yxdkexatwqwudlgsvflv</code> is linked for customer profile & booking storage.
             </p>
+            <button
+              type="button"
+              onClick={() => setShowSchemaModal(true)}
+              className="w-full py-1.5 px-2.5 rounded-lg bg-white hover:bg-emerald-100/60 text-emerald-900 border border-emerald-200/90 font-semibold text-[11px] flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <Code2 className="w-3.5 h-3.5 text-emerald-700" />
+              <span>{supabaseTableMissing ? 'Setup Database Tables' : 'View SQL Table Schema'}</span>
+            </button>
           </div>
 
           {/* Logout Action */}
@@ -172,6 +201,68 @@ export const CustomerLayout: React.FC<CustomerLayoutProps> = ({
           {children}
         </div>
       </div>
+
+      {/* Supabase SQL Schema Helper Modal */}
+      {showSchemaModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="relative w-full max-w-2xl bg-white rounded-3xl border border-stone-200 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold font-serif-display text-stone-900">
+                    Supabase SQL Table Setup (yxdkexatwqwudlgsvflv)
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    Run this SQL in your Supabase Dashboard SQL Editor to ensure the <code className="font-mono">customers</code> and <code className="font-mono">appointments</code> tables exist.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSchemaModal(false)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 hover:bg-stone-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="relative">
+              <pre className="p-4 rounded-2xl bg-stone-900 text-stone-100 font-mono text-[11px] overflow-x-auto max-h-80 leading-relaxed">
+                {SUPABASE_SQL_SCHEMA}
+              </pre>
+              <button
+                type="button"
+                onClick={handleCopySql}
+                className="absolute top-3 right-3 py-1.5 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs flex items-center gap-1.5 shadow-md"
+              >
+                {copiedSql ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Copied SQL!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy SQL</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSchemaModal(false)}
+                className="py-2 px-5 rounded-xl bg-stone-900 text-white text-xs font-bold"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

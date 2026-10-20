@@ -26,6 +26,12 @@ import {
 import { BarberShop, Appointment, BookedSlot, UserProfile } from './types';
 import { DEFAULT_DEMO_USERS } from './utils/authUtils';
 import { formatFriendlyDate } from './utils/bookingEngine';
+import {
+  saveCustomerToSupabase,
+  fetchCustomersFromSupabase,
+  saveAppointmentToSupabase,
+  fetchAppointmentsFromSupabase,
+} from './lib/supabase';
 
 export default function App() {
   // Navigation view state
@@ -52,7 +58,7 @@ export default function App() {
     }
   });
 
-  // Persistent booked slots (localStorage)
+  // Persistent booked slots (localStorage + Supabase)
   const [bookedSlots, setBookedSlots] = useState<BookedSlot[]>(() => {
     try {
       const saved = localStorage.getItem('trimly_booked_slots');
@@ -62,7 +68,7 @@ export default function App() {
     }
   });
 
-  // Persistent customer appointments (localStorage)
+  // Persistent customer appointments (localStorage + Supabase)
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
     try {
       const saved = localStorage.getItem('trimly_user_appointments');
@@ -87,6 +93,53 @@ export default function App() {
   const [bookingShopId, setBookingShopId] = useState<string | null>(null);
   const [bookingServiceName, setBookingServiceName] = useState<string | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  // Initial load from Supabase & sync current user
+  useEffect(() => {
+    let isMounted = true;
+
+    async function syncWithSupabase() {
+      // 1. Fetch remote customers
+      const custRes = await fetchCustomersFromSupabase();
+      if (isMounted && custRes.customers.length > 0) {
+        setRegisteredUsers((prev) => {
+          const map = new Map<string, UserProfile>();
+          prev.forEach((u) => map.set(u.id, u));
+          custRes.customers.forEach((remoteUser) => {
+            const existing = map.get(remoteUser.id);
+            map.set(remoteUser.id, {
+              ...existing,
+              ...remoteUser,
+              password: existing?.password || 'password123',
+            });
+          });
+          return Array.from(map.values());
+        });
+      }
+
+      // 2. Fetch remote appointments
+      const aptRes = await fetchAppointmentsFromSupabase();
+      if (isMounted && aptRes.appointments.length > 0) {
+        setAppointments((prev) => {
+          const map = new Map<string, Appointment>();
+          prev.forEach((a) => map.set(a.id, a));
+          aptRes.appointments.forEach((a) => map.set(a.id, a));
+          return Array.from(map.values());
+        });
+      }
+
+      // 3. Upsert active user to Supabase so their details are stored
+      if (user.isLoggedIn && user.id) {
+        await saveCustomerToSupabase(user);
+      }
+    }
+
+    syncWithSupabase();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Local storage synchronization
   useEffect(() => {
@@ -135,7 +188,6 @@ export default function App() {
       view === 'profile';
 
     if (isCustomerRoute && !user.isLoggedIn) {
-      // Normalize target
       const target = view === 'dashboard' ? 'customer/dashboard' : view;
       setRedirectAfterLogin(target);
       setCurrentView('login');
@@ -143,7 +195,6 @@ export default function App() {
       return;
     }
 
-    // Normalize legacy view aliases
     if (view === 'dashboard') {
       setCurrentView('customer/dashboard');
     } else if (view === 'bookings') {
@@ -164,18 +215,30 @@ export default function App() {
   };
 
   const handleAddBooking = (newAppointment: Appointment, newSlot: BookedSlot) => {
-    // Associate with authenticated customer if logged in
-    const aptWithCustomer = {
+    const aptWithCustomer: Appointment = {
       ...newAppointment,
       customerId: user.isLoggedIn ? user.id : 'user-alex-1',
     };
     setAppointments((prev) => [aptWithCustomer, ...prev]);
     setBookedSlots((prev) => [...prev, newSlot]);
+
+    // Persist appointment and customer details to Supabase
+    saveAppointmentToSupabase(aptWithCustomer);
+    if (user.isLoggedIn) {
+      saveCustomerToSupabase(user);
+    }
   };
 
   const handleCancelAppointment = (id: string) => {
     setAppointments((prev) =>
-      prev.map((apt) => (apt.id === id ? { ...apt, status: 'cancelled' as const } : apt))
+      prev.map((apt) => {
+        if (apt.id === id) {
+          const updated = { ...apt, status: 'cancelled' as const };
+          saveAppointmentToSupabase(updated);
+          return updated;
+        }
+        return apt;
+      })
     );
   };
 
@@ -187,19 +250,22 @@ export default function App() {
     displayTime: string
   ) => {
     setAppointments((prev) =>
-      prev.map((apt) =>
-        apt.id === id
-          ? {
-              ...apt,
-              date: newDate,
-              formattedDate: formatFriendlyDate(newDate),
-              startTime: newStartTime,
-              endTime: newEndTime,
-              displayTime,
-              status: 'confirmed' as const,
-            }
-          : apt
-      )
+      prev.map((apt) => {
+        if (apt.id === id) {
+          const updated: Appointment = {
+            ...apt,
+            date: newDate,
+            formattedDate: formatFriendlyDate(newDate),
+            startTime: newStartTime,
+            endTime: newEndTime,
+            displayTime,
+            status: 'confirmed' as const,
+          };
+          saveAppointmentToSupabase(updated);
+          return updated;
+        }
+        return apt;
+      })
     );
 
     const targetApt = appointments.find((a) => a.id === id);
@@ -220,10 +286,12 @@ export default function App() {
   const handleRegisterUser = (newUser: UserProfile) => {
     setRegisteredUsers((prev) => [...prev, newUser]);
     setUser(newUser);
+    saveCustomerToSupabase(newUser);
   };
 
   const handleLoginSuccess = (authenticatedUser: UserProfile) => {
     setUser(authenticatedUser);
+    saveCustomerToSupabase(authenticatedUser);
   };
 
   const handleUpdateUser = (updated: UserProfile) => {
@@ -231,6 +299,7 @@ export default function App() {
     setRegisteredUsers((prev) =>
       prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u))
     );
+    saveCustomerToSupabase(updated);
   };
 
   const handleLogout = () => {
